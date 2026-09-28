@@ -1,18 +1,30 @@
+"""
+Pestaña de control por retroalimentación de estado.
+
+Define la clase StateTab, encargada de:
+    - Mostrar en tiempo real las variables de estado del péndulo (ángulo,
+      velocidad angular, posición y velocidad lineal).
+    - Permitir configurar las ganancias del controlador (K1-K4) y la
+      referencia (posición objetivo) del carro.
+    - Mostrar el estado del sistema de control y graficar las variables
+      de estado mediante StatePlots.
+"""
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
     QFormLayout,
     QGroupBox,
-    QLineEdit, 
+    QLineEdit,
     QHBoxLayout,
     QGridLayout,
     QPushButton
 )
 
-from ui.utils.widget_style import *
+from ui.utils.widget_style import *  # Funciones auxiliares de estilo (dimensiones, colores, fuentes de los widgets)
 
-from ui.constants.ui_constants import(
+from ui.constants.ui_constants import (  # Colores y textos estándar para los indicadores de estado
     STATUS_GREEN,
     STATUS_RED,
     STATUS_YELLOW,
@@ -21,68 +33,84 @@ from ui.constants.ui_constants import(
     STATUS_WAITING
 )
 
-from plots.state_plots import(
-    StatePlots
+from plots.state_plots import (
+    StatePlots  # Widget de gráficas para visualizar las variables de estado en tiempo real
 )
 
-#TEMPORAL> simulacion datos
-from PySide6.QtCore import(
+# TEMPORAL: usado anteriormente para simulación de datos (ver método simulate_data, comentado más abajo)
+from PySide6.QtCore import (
     QTimer
 )
 import math
 
+
 class StateTab(QWidget):
+    """
+    Pestaña de control por retroalimentación de estado.
+
+    Agrupa los controles para visualizar las variables de estado del
+    péndulo, configurar las ganancias del controlador y la referencia
+    del carro, y muestra el estado general del sistema de control.
+    """
 
     def __init__(self, connection_manager, state_model):
-
-
+        """
+        Args:
+            connection_manager (ConnectionManager): Gestor de conexión compartido,
+                usado para enviar la configuración al microcontrolador.
+            state_model (StateModel): Modelo que almacena los valores actuales
+                de las variables de estado del péndulo (ángulo, posición, etc.).
+        """
         super().__init__()
 
-
-        self.state_plots = StatePlots()
+        self.state_plots = StatePlots()  # Widget que dibuja las gráficas de las variables de estado
 
         self.connection_manager = connection_manager
 
-        self.state = state_model
+        self.state = state_model  # Referencia al modelo de estado compartido con MainWindow
 
-        self.setup_ui()
+        self.setup_ui()  # Construye todos los elementos visuales de la pestaña
 
-        #timer
+        # Timer reservado para una eventual actualización periódica (actualmente sin uso activo,
+        # ya que simulate_data está deshabilitado más abajo)
         self.timer = QTimer()
 
-    #     self.timer.timeout.connect(
-    #         self.simulate_data
-    #     )
+        # NOTA: bloque de simulación de datos deshabilitado. Se dejó comentado como referencia
+        # por si se necesita reactivar una simulación de prueba sin datos reales del hardware.
+        #     self.timer.timeout.connect(
+        #         self.simulate_data
+        #     )
+        #    # self.timer.start(100)
+        #     self.counter = 0
 
-    #    # self.timer.start(100)
-    #     self.counter = 0
+    def setup_ui(self):
+        """
+        Construye y organiza todos los widgets de la pestaña: variables de
+        estado, ganancias del controlador, referencia del carro, estado del
+        sistema, acciones del controlador y gráficas en tiempo real.
+        """
+        # =========================================================================================================================
+        #                                                      Distribución/layout
+        # =========================================================================================================================
 
-        
-
-
-    def setup_ui(self): #distribucion visual
-         # =========================================================================================================================
-        #                                                      Distribucion/layout
-        # ========================================================================================================================
-        
         main_layout = QVBoxLayout()
 
-        top_layout = QHBoxLayout()
+        top_layout = QHBoxLayout()      # Fila superior: controles (izquierda) + gráficas (derecha)
 
-        left_layout = QVBoxLayout()
+        left_layout = QVBoxLayout()     # Columna izquierda: estado, ganancias y referencia
 
-        right_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()    # Columna derecha: gráficas
 
-        bottom_layout = QHBoxLayout()
+        bottom_layout = QHBoxLayout()   # Fila inferior: estado del sistema + controlador (acciones)
 
         top_layout.addLayout(
             left_layout,
-            1
+            1  # Proporción de espacio horizontal (1 parte de 3 en total junto con right_layout)
         )
 
         top_layout.addLayout(
             right_layout,
-            2
+            2  # Ocupa el doble de espacio que left_layout (2 partes de 3)
         )
 
         main_layout.addLayout(
@@ -95,7 +123,7 @@ class StateTab(QWidget):
 
         # =========================================================================================================================
         #                                                      Variables de estado
-        # ========================================================================================================================
+        # =========================================================================================================================
 
         state_group = QGroupBox(
             "Variables de Estado"
@@ -144,64 +172,65 @@ class StateTab(QWidget):
         )
 
         # =========================================================================================================================
-        #                                                      Ganancias
-        # ========================================================================================================================
+        #                                                      Ganancias del controlador
+        # =========================================================================================================================
 
         gains_group = QGroupBox(
             "Ganancias del Controlador"
         )
 
-        gains_layout = QGridLayout()
+        gains_layout = QGridLayout()  # Organiza las ganancias en una cuadrícula de 2 filas x 4 columnas (etiqueta+campo x2)
 
-        #inputs
+        # Campos de entrada para las 4 ganancias del controlador por realimentación de estado
         self.k1 = QLineEdit()
         self.k2 = QLineEdit()
         self.k3 = QLineEdit()
         self.k4 = QLineEdit()
 
-        # valores predeterminados/iniciales
+        # Valores predeterminados/iniciales
         self.k1.setText("0.0")
         self.k2.setText("0.0")
         self.k3.setText("0.0")
         self.k4.setText("0.0")
 
-        #layout
+        # Fila 0: K1 y K2
         gains_layout.addWidget(
             QLabel("K1"),
-            0,0
+            0, 0
         )
         gains_layout.addWidget(
             self.k1,
-            0,1
+            0, 1
         )
 
         gains_layout.addWidget(
             QLabel("K2"),
-            0,2
+            0, 2
         )
         gains_layout.addWidget(
             self.k2,
-            0,3
+            0, 3
+        )
+
+        # Fila 1: K3 y K4
+        gains_layout.addWidget(
+            QLabel("K3"),
+            1, 0
         )
 
         gains_layout.addWidget(
-            QLabel("K3"),
-            1,0
-        )
-        
-        gains_layout.addWidget(
             self.k3,
-            1,1
+            1, 1
         )
-        
+
         gains_layout.addWidget(
             QLabel("K4"),
-            1,2
+            1, 2
         )
-        
+
         gains_layout.addWidget(
             self.k4,
-            1,3
+            1, 3
         )
 
         gains_group.setLayout(
@@ -209,16 +238,16 @@ class StateTab(QWidget):
         )
 
         # =========================================================================================================================
-        #                                                      Ganancias
-        # ========================================================================================================================
+        #                                                      Referencia del carro
+        # =========================================================================================================================
 
         reference_group = QGroupBox(
             "Referencia del Carro"
-        )        
+        )
 
         reference_layout = QFormLayout()
 
-        self.reference = QLineEdit()
+        self.reference = QLineEdit()  # Posición objetivo (referencia) que debe alcanzar el carro
 
         reference_layout.addRow(
             "Posición Objetivo (mm)",
@@ -229,9 +258,9 @@ class StateTab(QWidget):
             reference_layout
         )
 
-         # =========================================================================================================================
-        #                                                      status
-        # ========================================================================================================================
+        # =========================================================================================================================
+        #                                                      Estado del sistema
+        # =========================================================================================================================
 
         status_group = QGroupBox(
             "Sistema de Control"
@@ -252,10 +281,10 @@ class StateTab(QWidget):
             "● Inactivo"
         )
 
-        set_status(self.control_status,STATUS_INACTIVE, STATUS_RED)
+        set_status(self.control_status, STATUS_INACTIVE, STATUS_RED)  # Estado inicial: inactivo (rojo)
 
         self.last_update = QLabel(
-            "---"
+            "---"  # Marca de tiempo de la última actualización recibida (sin datos aún)
         )
 
         status_layout.addRow(
@@ -273,9 +302,9 @@ class StateTab(QWidget):
         )
 
         # =========================================================================================================================
-        #                                                      Controlador
-        # ========================================================================================================================
-        
+        #                                                      Controlador (acciones)
+        # =========================================================================================================================
+
         controller_group = QGroupBox(
             "Controlador"
         )
@@ -286,7 +315,7 @@ class StateTab(QWidget):
             "Guardar Configuración"
         )
 
-        buttons_layout = QHBoxLayout() #layout secundario
+        buttons_layout = QHBoxLayout()  # Layout secundario para agrupar los botones de control lado a lado
 
         self.control_button = QPushButton(
             "Activar Control"
@@ -316,9 +345,13 @@ class StateTab(QWidget):
             controller_layout
         )
 
+        # NOTA: al igual que en PIDTab, self.update_button, self.control_button y
+        # self.reset_button se crean pero no tienen clicked.connect asignado aún —
+        # actualmente no ejecutan ninguna acción al presionarlos.
+
         # =========================================================================================================================
-        #                                                      widget style
-        # ========================================================================================================================
+        #                                                      Estilo de los widgets
+        # =========================================================================================================================
 
         set_control_height(
             self.k1,
@@ -333,7 +366,6 @@ class StateTab(QWidget):
         )
 
         set_secondary_button(
-            
             self.control_button,
             self.reset_button
         )
@@ -342,12 +374,9 @@ class StateTab(QWidget):
             main_layout
         )
 
-        
-
-         # =========================================================================================================================
-        #                                                      aplicar layout
-        # ========================================================================================================================
-         
+        # =========================================================================================================================
+        #                                                      Aplicar layout
+        # =========================================================================================================================
 
         left_layout.addWidget(
             state_group
@@ -361,13 +390,11 @@ class StateTab(QWidget):
             reference_group
         )
 
-        left_layout.addStretch()
+        left_layout.addStretch()  # Empuja los grupos hacia arriba, dejando espacio vacío al final de la columna
 
         right_layout.addWidget(
             self.state_plots
         )
-
-        
 
         bottom_layout.addWidget(
             status_group,
@@ -383,15 +410,18 @@ class StateTab(QWidget):
             main_layout
         )
 
-         # =========================================================================================================================
-        #                                               actualizacion de valores
-        # ========================================================================================================================
+        # =========================================================================================================================
+        #                                               Actualización inicial de valores
+        # =========================================================================================================================
 
-        self.update_ui()
-         
+        self.update_ui()  # Refleja en las etiquetas los valores iniciales del modelo de estado
 
-    def update_ui(self): #actualiza los valores de los labels acorde a las variables de estado obtenidas
-
+    def update_ui(self):
+        """
+        Actualiza el texto de las etiquetas de variables de estado (ángulo,
+        velocidad angular, posición y velocidad lineal) con los valores
+        actuales almacenados en self.state.
+        """
         self.angle_label.setText(
             f"{self.state.angle:.2f} °"
         )
@@ -408,34 +438,44 @@ class StateTab(QWidget):
             f"{self.state.linear_velocity:.2f} mm/s"
         )
 
+    # NOTA: método de simulación deshabilitado. Se usaba para generar datos de
+    # prueba (ángulo, velocidad angular, posición y velocidad lineal como
+    # funciones senoidales/cosenoidales) antes de contar con datos reales del
+    # hardware. Se conserva comentado como referencia para pruebas futuras.
+    #
     # def simulate_data(self):
-
+    #
     #     self.counter+=1
     #     t = self.counter/10
-        
-    #     self.state.angle = ( 
+    #
+    #     self.state.angle = (
     #         20* math.sin(t)
     #     )
-
+    #
     #     self.state.angular_velocity = (
     #         20 * math.cos(t)
     #     )
-
+    #
     #     self.state.position = (
     #         200 * math.sin(t/2)
     #     )
-
+    #
     #     self.state.linear_velocity = (
     #         100 * math.cos(t/2)
     #     )
-
+    #
     #     self.refresh()
 
-
     def refresh(self):
+        """
+        Actualiza tanto las etiquetas de variables de estado como las
+        gráficas de StatePlots con los valores actuales del modelo de estado.
 
+        Este método es llamado externamente (desde MainWindow) cada vez que
+        llegan nuevos datos del hardware.
+        """
         self.update_ui()
-        
+
         self.state_plots.update_plots(
             self.state
         )

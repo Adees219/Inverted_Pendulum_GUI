@@ -1,50 +1,70 @@
+"""
+Gestor central de conexión con el hardware.
+
+Define la clase ConnectionManager, encargada de actuar como capa
+intermedia entre la interfaz gráfica y los dos métodos de comunicación
+disponibles (Serial y TCP/IP). Unifica el envío/recepción de datos bajo
+una misma interfaz, sin que el resto de la aplicación necesite saber si
+la conexión activa es serial o de red.
+"""
+
 from PySide6.QtCore import (
     QObject,
     Signal
 )
 
-from comunicacion.serial_manager import ( # metodo conexion serial: clase
+from comunicacion.serial_manager import (  # Gestor del método de conexión Serial
     SerialManager
 )
 
-from comunicacion.tcp_manager import (  # metodo conexion tcp: clase
+from comunicacion.tcp_manager import (  # Gestor del método de conexión TCP/IP
     TCPManager
 )
 
 from comunicacion.Serial_reader_thread import (
-    SerialReaderThread
+    SerialReaderThread  # Hilo dedicado a leer datos entrantes por el puerto serial sin bloquear la interfaz
 )
 
 
-class ConnectionManager(QObject): 
+class ConnectionManager(QObject):
+    """
+    Punto único de acceso a la comunicación con el microcontrolador.
 
-    connection_changed = Signal(bool) # signal 
-    data_received = Signal(dict)
+    Decide, según el modo activo (Serial o Red), a cuál de los dos
+    gestores (SerialManager o TCPManager) delegar cada operación de
+    conexión, desconexión, envío y lectura de datos. Además, reenvía
+    (a través de señales propias) los eventos de conexión y los datos
+    recibidos, sin importar el método de comunicación utilizado.
+    """
 
+    connection_changed = Signal(bool)  # Señal emitida cuando cambia el estado de conexión (True = conectado)
+    data_received = Signal(dict)       # Señal emitida cada vez que llegan nuevos datos del microcontrolador
 
-    #constantes
+    # Constantes que identifican el modo de conexión
     SERIAL = "serial"
     NETWORK = "network"
 
-    
-    def __init__(self): # metodo constructor
-
-
+    def __init__(self):
+        """
+        Inicializa los gestores de comunicación (Serial y TCP), el hilo de
+        lectura serial, y conecta sus señales internas a las señales
+        públicas de ConnectionManager.
+        """
         super().__init__()
 
-
-        self.serial_manager = ( # llama a la clase de comunicacion serial
+        self.serial_manager = (  # Instancia del gestor de comunicación serial
             SerialManager()
         )
 
-        self.serial_thread = SerialReaderThread(
+        self.serial_thread = SerialReaderThread(  # Hilo que lee continuamente el puerto serial en segundo plano
             self.serial_manager
         )
 
-        self.tcp_manager = (    # llama a la clase de comunicacion TCP
+        self.tcp_manager = (  # Instancia del gestor de comunicación por red (TCP/IP)
             TCPManager()
         )
 
+        # Se reenvían los cambios de estado de conexión de ambos gestores hacia la señal pública
         self.serial_manager.connection_changed.connect(
             self.connection_changed.emit
         )
@@ -53,8 +73,9 @@ class ConnectionManager(QObject):
             self.connection_changed.emit
         )
 
-        self.current_mode = self.SERIAL # metodo predeterminado
+        self.current_mode = self.SERIAL  # Modo de conexión predeterminado al iniciar la aplicación
 
+        # Se reenvían los datos recibidos de ambos gestores hacia la señal pública
         self.serial_manager.data_received.connect(
             self.data_received.emit
         )
@@ -62,17 +83,29 @@ class ConnectionManager(QObject):
         self.tcp_manager.data_received.connect(
             self.data_received.emit
         )
-    
 
-    def set_mode(self, mode: str):   # determina el metodo de conexion
+    def set_mode(self, mode: str):
+        """
+        Define el método de conexión activo (Serial o Red).
 
-
+        Args:
+            mode (str): Uno de los valores ConnectionManager.SERIAL o
+                ConnectionManager.NETWORK.
+        """
         self.current_mode = mode
 
+    def connect(self, target):
+        """
+        Establece la conexión con el microcontrolador usando el modo actual.
 
-    def connect(self, target):  # realiza la conexion en base a la seleccion del radio button.
+        Si el modo es Serial, conecta el puerto indicado y, de tener éxito,
+        inicia el hilo de lectura. Si el modo es Red, se conecta a la
+        dirección IP/equipo indicado.
 
-
+        Args:
+            target (str): Puerto COM (modo Serial) o dirección IP (modo Red)
+                al que se desea conectar.
+        """
         if self.current_mode == self.SERIAL:
 
             self.serial_manager.connect_port(
@@ -81,8 +114,7 @@ class ConnectionManager(QObject):
 
             if self.serial_manager.connected:
 
-                self.serial_thread.start()
-
+                self.serial_thread.start()  # Inicia la lectura continua del puerto solo si la conexión fue exitosa
 
         else:
 
@@ -90,10 +122,14 @@ class ConnectionManager(QObject):
                 target
             )
 
-            
-    def disconnect(self):    # realiza la desconexion.
+    def disconnect(self):
+        """
+        Cierra la conexión activa según el modo actual.
 
-
+        En modo Serial, detiene primero el hilo de lectura (si está
+        corriendo) antes de cerrar el puerto, para evitar accesos
+        concurrentes al recurso ya liberado.
+        """
         if self.current_mode == self.SERIAL:
 
             self.serial_manager.disconnect_port()
@@ -106,20 +142,26 @@ class ConnectionManager(QObject):
 
             self.tcp_manager.disconnect_network()
 
-    
-    def get_available_ports(self): #obtiene puertos COM del equipo
+    def get_available_ports(self):
+        """
+        Obtiene la lista de puertos COM disponibles en el equipo.
 
-
+        Returns:
+            list[str]: Nombres de los puertos serie detectados.
+        """
         return (
             self.serial_manager
             .get_available_ports()
         )
-    
 
-    @property #convierte la funcion en atributo
+    @property  # Permite acceder a "connected" como si fuera un atributo (sin paréntesis), en vez de un método
     def connected(self):
+        """
+        Indica si existe una conexión activa en el modo actualmente seleccionado.
 
-
+        Returns:
+            bool: True si hay conexión activa (Serial o Red, según el modo), False si no.
+        """
         if self.current_mode == self.SERIAL:
 
             return (
@@ -130,10 +172,14 @@ class ConnectionManager(QObject):
             self.tcp_manager.connected
         )
 
+    def send(self, data):
+        """
+        Envía datos ya serializados (JSON) al microcontrolador, usando el
+        gestor correspondiente al modo de conexión actual.
 
-    def send(self, data): #gestiona el envio de datos del JSON en base al metodo de conexion empleado
-
-
+        Args:
+            data (str): Cadena de datos (JSON) a enviar.
+        """
         if self.current_mode == self.SERIAL:
 
             self.serial_manager.send(
@@ -145,16 +191,24 @@ class ConnectionManager(QObject):
             self.tcp_manager.send(
                 data
             )
-    
+
     def send_model(self, model):
+        """
+        Serializa un modelo de datos (ConfigModel, PIDModel, etc.) a JSON
+        y lo envía al microcontrolador.
 
+        Args:
+            model: Instancia de un modelo que implementa el método to_json().
+        """
         self.send(
-             model.to_json()
+            model.to_json()
         )
-        
-        
-    def read_once(self):
 
+    def read_once(self):
+        """
+        Realiza una lectura puntual de datos desde el gestor correspondiente
+        al modo de conexión actual (Serial o Red).
+        """
         if self.current_mode == self.SERIAL:
 
             self.serial_manager.read_once()

@@ -1,4 +1,4 @@
-# Importa los valores predefinidos para definir dimensiones/colores/font de los widgets y los aplica
+# Documento de valores predefinidos para definir el estilo de las ventanas: dimensiones/colores/font de los widgets y los aplica
 
 from ui.constants.ui_constants import (
     CONTROL_HEIGHT,

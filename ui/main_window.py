@@ -1,103 +1,129 @@
+"""
+Módulo de la ventana principal de la aplicación.
+
+Define la clase MainWindow, encargada de construir la interfaz gráfica
+principal: organiza las pestañas de configuración, control PID y control
+por retroalimentación de estado, y coordina la comunicación con el
+hardware a través del ConnectionManager.
+"""
+
 from PySide6.QtWidgets import (
-    QMainWindow, #provides a main application window.
-    QWidget,    #Returns the menu bar for the main window
-    QTabWidget, #Adds a tab with the given page, icon, and label to the tab widget, and returns the index of the tab in the tab bar.
-    QVBoxLayout #lines up widgets vertically.
+    QMainWindow,  # Ventana principal de la aplicación (provee barra de menú, barra de estado, widget central, etc.)
+    QWidget,      # Widget genérico, usado aquí como contenedor central
+    QTabWidget,   # Contenedor que organiza el contenido en pestañas
+    QVBoxLayout   # Organiza los widgets hijos en una columna vertical
 )
 
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon  # Permite cargar y asignar el ícono de la ventana
 
-#importacion de las clases (entornos) para cada ventana
-from ui.config_tab import ConfigTab # ui pestaña config
-from ui.pid_tab import PIDTab       # ui pestaña PID
-from ui.state_tab import StateTab   # ui pestaña controlador de estados
-from comunicacion.connection_manager import ( #gestionador de metodo de conexion 
-    ConnectionManager
+# Pestañas (vistas) de la interfaz, una clase por cada modo de control
+from ui.config_tab import ConfigTab  # Pestaña de configuración de conexión
+from ui.pid_tab import PIDTab        # Pestaña de control PID
+from ui.state_tab import StateTab    # Pestaña de control por retroalimentación de estado
+
+from comunicacion.connection_manager import (
+    ConnectionManager  # Gestiona la conexión y comunicación con el hardware (serial/bluetooth/etc.)
 )
-from models.state_model import StateModel
-
-class MainWindow(QMainWindow): #genera una ventana principal
-
-    def __init__(self): #definition for the constructor method in a Python class. It acts as an initializer that is automatically called as soon 
-                        #as you create (instantiate) a new object. It is used to set initial values and prepare the object for use.
+from models.state_model import StateModel  # Modelo de datos que almacena el estado actual del péndulo
 
 
-        super().__init__() #cada vez que se cree una instancia de la clase se ejecutar este codigo
+class MainWindow(QMainWindow):
+    """
+    Ventana principal de la aplicación.
 
-         # =========================================================================================================================
-        #                                                 Coordinacion de actividades
-        # ========================================================================================================================
+    Se encarga de:
+        - Inicializar el gestor de conexión y el modelo de estado.
+        - Construir el layout general de la interfaz.
+        - Crear y organizar las pestañas de configuración, PID y control de estado.
+        - Recibir los datos entrantes del hardware y distribuirlos al modelo
+          y a la vista correspondiente.
+    """
 
-        # gestor de conexion 
+    def __init__(self):
+        """
+        Constructor de la ventana principal.
+
+        Se ejecuta automáticamente al instanciar la clase. Inicializa los
+        gestores de datos/conexión, configura la ventana y construye
+        todas las pestañas de la interfaz.
+        """
+        super().__init__()  # Inicializa la clase base QMainWindow con su configuración por defecto
+
+        # =========================================================================================================================
+        #                                                 Coordinación de actividades
+        # =========================================================================================================================
+
+        # Gestor de conexión: maneja el envío/recepción de datos con el sistema físico
         self.connection_manager = ConnectionManager()
 
-        #gestores de informacion
+        # Modelo de datos: almacena el estado actual del péndulo (ángulo, posición, velocidades, etc.)
         self.state_model = StateModel()
 
-        self.connection_manager.data_received.connect( 
+        # Conecta la señal de datos recibidos al método que procesa la información entrante
+        self.connection_manager.data_received.connect(
             self.process_received_data
         )
 
-
         # =========================================================================================================================
         #                                                     Ventana
-        # ========================================================================================================================
+        # =========================================================================================================================
 
-        # titulo de la app
-        self.setWindowTitle( 
+        # Título de la ventana, visible en la barra superior del sistema operativo
+        self.setWindowTitle(
             "Control de Péndulo Invertido"
         )
 
+        # Ícono de la aplicación
         self.setWindowIcon(
             QIcon("resources/icon.png")
         )
 
-        # dimensionamiento de ventana inicial
-        self.resize(900, 400) 
+        # Tamaño inicial de la ventana (ancho, alto) en píxeles
+        self.resize(900, 400)
 
-        #contenedor central: contiene los botones/tabs/graficos
-        self.central_widget = QWidget() #nota: los objetos no los contiene la ventana, sino el contenedor
-        self.setCentralWidget( #Se establece que todo lo que se va a generar, será parte de este widget
+        # Widget central: contenedor que alojará todos los elementos visuales (pestañas, botones, gráficas)
+        # Nota: en Qt, el contenido no se agrega directamente a la ventana, sino a este widget central
+        self.central_widget = QWidget()
+        self.setCentralWidget(  # Define este widget como el contenedor principal de la ventana
             self.central_widget
         )
 
+        # Layout vertical: organiza los elementos del widget central en una columna
+        self.layout = QVBoxLayout()
 
-        #disposicion grafica vertical. layout: distribución espacial de elementos 
-        self.layout = QVBoxLayout() 
-
-        self.central_widget.setLayout( #se asigna el layout (organizador) al widget
-            self.layout 
+        self.central_widget.setLayout(  # Asigna el layout vertical al widget central
+            self.layout
         )
 
+        # Widget de pestañas: permite alternar entre las distintas vistas de control
+        self.tabs = QTabWidget()
 
-        #permite crear las pestañas/ventanas
-        self.tabs = QTabWidget() 
-
-        self.layout.addWidget( #se agregan las pestañas al layout
+        self.layout.addWidget(  # Agrega el widget de pestañas al layout principal
             self.tabs
         )
 
-        # pestañas/ventanas 
+        # -------------------------------------------------------------------------------------------------------------------
+        # Creación de las pestañas de la interfaz
+        # -------------------------------------------------------------------------------------------------------------------
 
         self.config_tab = ConfigTab(
             self.connection_manager
-        ) # importa clase pestaña de configuracion
+        )  # Pestaña de configuración (conexión con el hardware)
 
         self.pid_tab = PIDTab(
             self.connection_manager
-        )       # importa clase pestaña de controlador PID
+        )  # Pestaña de control PID
 
         self.state_tab = StateTab(
             self.connection_manager,
             self.state_model
-        )   # importa clase  pestaña de controlador por variables de estado.
+        )  # Pestaña de control por retroalimentación de estado
 
-        #crea las pestañas y las muestra arriba de la main window
+        # Registra cada pestaña en el QTabWidget, con su respectiva etiqueta visible
         self.tabs.addTab(
             self.config_tab,
             "Configuración"
         )
-        
 
         self.tabs.addTab(
             self.pid_tab,
@@ -109,19 +135,24 @@ class MainWindow(QMainWindow): #genera una ventana principal
             "Control por Retroalimentación de Estado"
         )
 
-    # recibe, gestiona y actualiza la informacion 
     def process_received_data(self, data):
+        """
+        Procesa los datos entrantes provenientes del hardware.
 
-        print(data)
+        Actualiza el modelo de estado (StateModel) con los valores recibidos
+        y refresca la pestaña de control de estado para reflejar los cambios
+        en la interfaz.
 
-        self.state_model.angle = data["d1"]
-        
-        self.state_model.angular_velocity = data["d2"]
+        Args:
+            data (dict): Diccionario con las lecturas del sistema. Se espera
+                que contenga las claves "d1", "d2", "d3" y "d4", correspondientes
+                a ángulo, velocidad angular, posición y velocidad lineal.
+        """
+        print(data)  # Depuración: muestra en consola los datos recibidos
 
-        self.state_model.position = data["d3"]
+        #self.state_model.angle = data["d1"]             # Ángulo del péndulo
+        #self.state_model.angular_velocity = data["d2"]   # Velocidad angular del péndulo
+        #self.state_model.position = data["d3"]           # Posición del carro/base
+        #self.state_model.linear_velocity = data["d4"]     # Velocidad lineal del carro/base
 
-        self.state_model.linear_velocity = data["d4"]
-
-        self.state_tab.refresh()
-
-       
+        self.state_tab.refresh()  # Actualiza la vista de la pestaña de estado con los nuevos valores

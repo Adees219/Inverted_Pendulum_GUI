@@ -1,3 +1,14 @@
+"""
+Pestaña de control PID.
+
+Define la clase PIDTab, encargada de:
+    - Permitir seleccionar el punto de equilibrio del péndulo (arriba/abajo).
+    - Configurar y validar las ganancias del controlador PID (Kp, Ki, Kd).
+    - Mostrar el estado actual del sistema de control (modo, estado, frecuencia).
+    - Graficar en tiempo real el ángulo y la señal de control (simulados por ahora).
+    - Enviar la configuración PID al microcontrolador a través del ConnectionManager.
+"""
+
 from PySide6.QtWidgets import (
     QWidget,
     QLabel,
@@ -12,9 +23,9 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
-from ui.utils.widget_style import *
+from ui.utils.widget_style import *  # Funciones auxiliares de estilo (dimensiones, colores, fuentes de los widgets)
 
-from ui.constants.ui_constants import(
+from ui.constants.ui_constants import (  # Colores y textos estándar para los indicadores de estado
     STATUS_GREEN,
     STATUS_RED,
     STATUS_YELLOW,
@@ -23,68 +34,82 @@ from ui.constants.ui_constants import(
     STATUS_WAITING
 )
 
-from PySide6.QtGui import ( # valida entradas de los inputs
-    QDoubleValidator 
+from PySide6.QtGui import (  # Validador para restringir la entrada a números decimales dentro de un rango
+    QDoubleValidator
 )
 
-from models.pid_model import PIDModel # valores que recibe el modelo
+from models.pid_model import PIDModel  # Modelo que almacena y serializa las ganancias/modo del controlador PID
 
-from plots.pid_plots import PIDPlots
+from plots.pid_plots import PIDPlots  # Widget de gráficas para visualizar ángulo y señal de control en tiempo real
 
-from PySide6.QtCore import QTimer
-import math
+from PySide6.QtCore import QTimer  # Temporizador usado para simular/actualizar las gráficas periódicamente
+import math  # Funciones matemáticas (usadas aquí para generar la señal simulada)
+
 
 class PIDTab(QWidget):
+    """
+    Pestaña de control PID.
 
+    Agrupa los controles para configurar el punto de equilibrio y las
+    ganancias del PID, muestra el estado del sistema de control y despliega
+    las gráficas de ángulo/señal de control en tiempo real.
+    """
 
     def __init__(self, connection_manager):
-        
-        
+        """
+        Args:
+            connection_manager (ConnectionManager): Gestor de conexión compartido,
+                usado para enviar la configuración PID al microcontrolador.
+        """
         super().__init__()
 
+        self.pid = PIDModel()  # Modelo que guarda las ganancias (Kp, Ki, Kd) y el modo (arriba/abajo)
 
-        self.pid = PIDModel()
-
-        self.pid_plots = PIDPlots()
+        self.pid_plots = PIDPlots()  # Widget que dibuja las gráficas de ángulo y señal de control
 
         self.connection_manager = (
             connection_manager
         )
 
-        self.setup_ui()
+        self.setup_ui()  # Construye todos los elementos visuales de la pestaña
 
-        self.counter = 0
+        self.counter = 0  # Contador usado para generar la señal simulada (ver simulate_pid)
 
-        self.timer = QTimer()
+        self.timer = QTimer()  # Temporizador que dispara la actualización periódica de las gráficas
 
         self.timer.timeout.connect(
             self.simulate_pid
         )
 
-        self.timer.start(50)
+        self.timer.start(50)  # Se ejecuta cada 50 ms (~20 actualizaciones por segundo)
 
     def setup_ui(self):
-      # =========================================================================================================================
-        #                                                      Distribucion/layout
-        # ========================================================================================================================
+        """
+        Construye y organiza todos los widgets de la pestaña: selección de
+        punto de equilibrio, parámetros PID, estado del sistema, acciones
+        y gráficas en tiempo real.
+        """
+        # =========================================================================================================================
+        #                                                      Distribución/layout
+        # =========================================================================================================================
         main_layout = QVBoxLayout()
 
-        top_layout = QHBoxLayout()
+        top_layout = QHBoxLayout()      # Fila superior: controles (izquierda) + gráficas (derecha)
 
-        left_layout = QVBoxLayout()
+        left_layout = QVBoxLayout()     # Columna izquierda: equilibrio + parámetros PID
 
-        right_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()    # Columna derecha: gráficas
 
-        bottom_layout = QHBoxLayout()
+        bottom_layout = QHBoxLayout()   # Fila inferior: estado del sistema + acciones
 
         top_layout.addLayout(
             left_layout,
-            1
+            1  # Proporción de espacio horizontal (1 parte de 3 en total junto con right_layout)
         )
 
         top_layout.addLayout(
             right_layout,
-            2
+            2  # Ocupa el doble de espacio que left_layout (2 partes de 3)
         )
 
         main_layout.addLayout(
@@ -95,10 +120,9 @@ class PIDTab(QWidget):
             bottom_layout
         )
 
-
         # =========================================================================================================================
-        #                                                      equilibrio
-        # ========================================================================================================================
+        #                                                      Punto de equilibrio
+        # =========================================================================================================================
 
         equilibrium_group = QGroupBox(
             "Punto de Equilibrio"
@@ -114,9 +138,9 @@ class PIDTab(QWidget):
             "Arriba"
         )
 
-        self.down_radio.setChecked(True) #valor predefinido: abajo
+        self.down_radio.setChecked(True)  # Valor predeterminado: péndulo estabilizado hacia abajo
 
-        self.mode_group = QButtonGroup() #grupo de botones
+        self.mode_group = QButtonGroup()  # Agrupa los radio buttons para que sean mutuamente excluyentes
 
         self.mode_group.addButton(
             self.down_radio
@@ -126,8 +150,6 @@ class PIDTab(QWidget):
             self.up_radio
         )
 
-
-        #formulario
         equilibrium_layout.addWidget(
             self.down_radio
         )
@@ -139,35 +161,34 @@ class PIDTab(QWidget):
         equilibrium_group.setLayout(
             equilibrium_layout
         )
+
         # =========================================================================================================================
-        #                                                      parametros PID
-        # ========================================================================================================================
+        #                                                      Parámetros PID
+        # =========================================================================================================================
         pid_group = QGroupBox(
             "Parámetros del Controlador PID"
         )
 
         pid_layout = QFormLayout()
 
-        self.kp = QLineEdit()
+        self.kp = QLineEdit()  # Ganancia proporcional
 
-        self.ki = QLineEdit()
+        self.ki = QLineEdit()  # Ganancia integral
 
-        self.kd = QLineEdit()
+        self.kd = QLineEdit()  # Ganancia derivativa
 
-        #valores por defecto
-
+        # Valores por defecto
         self.kp.setText("900")
 
         self.ki.setText("0.1")
 
         self.kd.setText("0.001")
 
-        #validadores
-
+        # Validador compartido: permite decimales entre -100000 y 100000, con hasta 6 decimales
         validator = QDoubleValidator(
-            -100000.0,  #lower limit
-            100000.0,   #upper limit
-            6           #decimales
+            -100000.0,  # límite inferior
+            100000.0,   # límite superior
+            6           # cantidad de decimales permitidos
         )
 
         self.kp.setValidator(
@@ -182,7 +203,6 @@ class PIDTab(QWidget):
             validator
         )
 
-        #formulario
         pid_layout.addRow(
             "Kp",
             self.kp
@@ -201,11 +221,10 @@ class PIDTab(QWidget):
         pid_group.setLayout(
             pid_layout
         )
-        
 
         # =========================================================================================================================
         #                                                      Estado
-        # ========================================================================================================================
+        # =========================================================================================================================
         status_group = QGroupBox(
             "Sistema de Control"
         )
@@ -216,14 +235,12 @@ class PIDTab(QWidget):
             "PID"
         )
 
-        self.control_status = QLabel(
-            
-        )
+        self.control_status = QLabel()  # Etiqueta que refleja si el control PID está activo o inactivo
 
-        set_status(self.control_status,STATUS_INACTIVE, STATUS_RED)
+        set_status(self.control_status, STATUS_INACTIVE, STATUS_RED)  # Estado inicial: inactivo
 
         self.freq_status = QLabel(
-            "---- Hz"
+            "---- Hz"  # Frecuencia de control, aún sin datos reales
         )
 
         status_layout.addRow(
@@ -247,16 +264,15 @@ class PIDTab(QWidget):
 
         # =========================================================================================================================
         #                                                      Acciones
-        # ========================================================================================================================
+        # =========================================================================================================================
         actions_group = QGroupBox("Acciones")
 
         actions_layout = QHBoxLayout()
 
-
         self.apply_button = QPushButton(
             "Guardar Configuración PID"
         )
-        
+
         self.control_button = QPushButton(
             "Activar"
         )
@@ -268,6 +284,9 @@ class PIDTab(QWidget):
         self.apply_button.clicked.connect(
             self.save_pid
         )
+
+        # NOTA: self.control_button y self.reset_button se crean pero no tienen una
+        # conexión (clicked.connect) asignada todavía — actualmente no ejecutan ninguna acción.
 
         actions_layout.addWidget(
             self.apply_button
@@ -286,8 +305,8 @@ class PIDTab(QWidget):
         )
 
         # =========================================================================================================================
-        #                                                      widget style
-        # ========================================================================================================================
+        #                                                      Estilo de los widgets
+        # =========================================================================================================================
 
         set_control_height(
             self.kp,
@@ -300,7 +319,6 @@ class PIDTab(QWidget):
         )
 
         set_secondary_button(
-            
             self.control_button,
             self.reset_button
         )
@@ -317,19 +335,17 @@ class PIDTab(QWidget):
             pid_group
         )
 
-        
-
         # =========================================================================================================================
-        #                                                      aplicar layout
-        # ========================================================================================================================
-           
+        #                                                      Aplicar layout
+        # =========================================================================================================================
+
         left_layout.addWidget(
             equilibrium_group
         )
 
         left_layout.addWidget(
             pid_group
-        )  
+        )
 
         right_layout.addWidget(
             self.pid_plots
@@ -358,19 +374,24 @@ class PIDTab(QWidget):
             main_layout
         )
 
-
-
     def save_pid(self):
+        """
+        Valida las ganancias Kp, Ki y Kd ingresadas, guarda el modo de
+        equilibrio seleccionado (arriba/abajo) en el modelo PID, y envía
+        la configuración resultante al microcontrolador.
 
-        # Ganancias controlador
+        Si alguna ganancia no es válida según su validador, se muestra una
+        advertencia y se detiene el proceso sin enviar datos.
+        """
 
+        # Ganancias del controlador
         if not self.kp.hasAcceptableInput():
             QMessageBox.warning(
                 self,
                 "Error",
                 "Kp inválido"
             )
-            return  
+            return
         self.pid.kp = float(
             self.kp.text()
         )
@@ -381,7 +402,7 @@ class PIDTab(QWidget):
                 "Error",
                 "Ki inválido"
             )
-            return  
+            return
         self.pid.ki = float(
             self.ki.text()
         )
@@ -392,13 +413,12 @@ class PIDTab(QWidget):
                 "Error",
                 "Kd inválido"
             )
-            return  
+            return
         self.pid.kd = float(
             self.kd.text()
         )
 
-        # modo/posicion pendulo
-
+        # Modo/posición de equilibrio del péndulo
         if self.down_radio.isChecked():
             self.pid.mode = (
                 PIDModel.DOWN
@@ -409,31 +429,34 @@ class PIDTab(QWidget):
                 PIDModel.UP
             )
 
-        # enviar json
-
-        print(self.pid.to_json())
+        # Envío del modelo PID al microcontrolador
+        print(self.pid.to_json())  # Depuración: muestra en consola el JSON enviado
 
         self.connection_manager.send_model(
             self.pid
         )
 
-
     def simulate_pid(self):
+        """
+        Genera una señal simulada de ángulo y señal de control (mientras no
+        se reciban datos reales del hardware en esta pestaña) y actualiza
+        las gráficas de PIDPlots.
 
+        Se ejecuta periódicamente mediante self.timer (cada 50 ms).
+        """
         self.counter += 1
 
         t = self.counter / 15
 
-        angle = 15 * math.sin(t)
+        angle = 15 * math.sin(t)  # Ángulo simulado: oscilación senoidal de amplitud 15°
 
         control = (
-            1000 * math.sin(t)
+            1000 * math.sin(t)      # Componente principal de la señal de control simulada
             +
-            150 * math.sin(4*t)
+            150 * math.sin(4 * t)   # Componente de mayor frecuencia, simula ruido/dinámica secundaria
         )
 
         self.pid_plots.update_plots(
             angle,
             control
         )
-        

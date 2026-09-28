@@ -1,4 +1,16 @@
-from PySide6.QtWidgets import ( #importando librerias de Qt
+"""
+Pestaña de configuración de la interfaz.
+
+Define la clase ConfigTab, encargada de:
+    - Permitir seleccionar el método de conexión con el hardware (Serial o Red/TCP-IP).
+    - Establecer y validar los parámetros de configuración del sistema
+      (amperaje, microstep, velocidad máxima, aceleración, períodos de
+      control/telemetría y offset del sensor AS5600).
+    - Enviar la configuración validada al microcontrolador a través del
+      ConnectionManager.
+"""
+
+from PySide6.QtWidgets import (  # Widgets de Qt utilizados para construir la interfaz
     QWidget,
     QLabel,
     QPushButton,
@@ -13,68 +25,78 @@ from PySide6.QtWidgets import ( #importando librerias de Qt
     QMessageBox
 )
 
-from ui.utils.widget_style import * # funciones para definir dimensiones/colores/font de los widgets
+from ui.utils.widget_style import *  # Funciones auxiliares de estilo (dimensiones, colores, fuentes de los widgets)
 
-from ui.constants.ui_constants import(
+from ui.constants.ui_constants import (  # Colores estándar para indicar el estado de conexión
     STATUS_GREEN,
     STATUS_RED,
     STATUS_YELLOW
 )
 
-from PySide6.QtGui import ( #validadores de texto
+from PySide6.QtGui import (  # Validadores para restringir el texto ingresado en los campos numéricos
     QIntValidator,
     QDoubleValidator
 )
 
-from models.config_model import ConfigModel
+from models.config_model import ConfigModel  # Modelo que almacena y serializa los parámetros de configuración
+
 
 class ConfigTab(QWidget):
+    """
+    Pestaña de configuración.
 
+    Contiene los controles para elegir el modo de conexión (Serial/Red),
+    establecer los parámetros del sistema y enviarlos al microcontrolador.
+    """
 
     def __init__(self, connection_manager):
-
-
+        """
+        Args:
+            connection_manager (ConnectionManager): Gestor de conexión compartido
+                con el resto de la aplicación, usado para conectar/desconectar
+                y enviar la configuración al hardware.
+        """
         super().__init__()
-
 
         self.connection_manager = (
             connection_manager
-        ) #llama a la clase que hace la comunicacion.
-        
+        )  # Referencia al gestor de comunicación (serial/red)
 
-        self.connection_manager.connection_changed.connect( #cuando cambia el estado de conexion en "serial_manager"
-            self.update_connection_status   #actualiza el estado el estado por el actual.
+        # Cuando el estado de conexión cambia en el connection_manager, se actualiza la interfaz
+        self.connection_manager.connection_changed.connect(
+            self.update_connection_status
         )
 
+        # Si ocurre un error en la conexión serial, se muestra un mensaje al usuario
         self.connection_manager.serial_manager.connection_error.connect(
             self.show_connection_error
         )
 
-        self.config = ConfigModel() #referencia a la clase de config_model
+        self.config = ConfigModel()  # Modelo que almacena los valores de configuración a enviar
 
-        self.setup_ui() #llama a la funcion que hace el apartado grafico.
-
+        self.setup_ui()  # Construye todos los elementos visuales de la pestaña
 
     def setup_ui(self):
+        """
+        Construye y organiza todos los widgets de la pestaña: grupo de método
+        de conexión, grupo TCP/IP, grupo Serial y grupo de configuración general.
+        """
 
-
-        # Layout principal
-        main_layout = QVBoxLayout() #layout vertical → "V"
+        # Layout principal (organiza los grupos verticalmente)
+        main_layout = QVBoxLayout()
 
         # =========================================================================================================================
-        #                                                      metodo de conexion
-        # ========================================================================================================================
-        conec_group = QGroupBox("Método de Conexión")
-        
+        #                                                      Método de conexión
+        # =========================================================================================================================
+        conec_group = QGroupBox("Método de Conexión")  # Recuadro con borde y título
 
         conec_form = QFormLayout()
         radio_layout = QHBoxLayout()
 
-        #radio botton para seleccionar el metodo de conexion
+        # Radio buttons para elegir el método de conexión (mutuamente excluyentes)
         self.serial_radio = QRadioButton("Serial")
         self.network_radio = QRadioButton("Red")
 
-        #agregando al layout del grupo
         radio_layout.addWidget(
             self.serial_radio
         )
@@ -83,19 +105,18 @@ class ConfigTab(QWidget):
             self.network_radio
         )
 
+        # Se agrupan los radio buttons en un widget para poder insertarlos como una sola fila en el formulario
         radio_widget = QWidget()
         radio_widget.setLayout(
             radio_layout
         )
 
-        self.connection_status = QLabel( #etiqueta que avisa el estado de conexion
-            
-        )
+        self.connection_status = QLabel()  # Etiqueta que muestra el estado actual de la conexión
 
-        set_status(self.connection_status,"● Desconectado", STATUS_RED)
-      
+        set_status(self.connection_status, "● Desconectado", STATUS_RED)  # Estado inicial: desconectado (rojo)
+
         conec_form.addRow(
-           "Estado",
+            "Estado",
             self.connection_status
         )
 
@@ -108,21 +129,19 @@ class ConfigTab(QWidget):
             conec_form
         )
 
-
-        
         # ==================================================================================================================================
         #                                                            RED/Internet (TCP/IP)
         # ==================================================================================================================================
-        
+
         self.TCP_group = QGroupBox("TCP/IP")
 
         TCP_layout = QFormLayout()
 
         self.TCP_label = QLabel(
-            "192.168.12.XX"
+            "192.168.12.XX"  # Muestra el formato esperado de la IP (referencia visual, no editable)
         )
 
-        self.TCP_Equipo = QLineEdit() 
+        self.TCP_Equipo = QLineEdit()  # Campo donde el usuario ingresa el número de equipo (últimos octetos de la IP)
 
         self.TCP_boton = QPushButton(
             "Conectar"
@@ -154,43 +173,37 @@ class ConfigTab(QWidget):
         #                                                               Puerto COM
         # ==================================================================================================================================
 
-        self.com_group = QGroupBox("Serial") #crea un borde que delimita los elementos
+        self.com_group = QGroupBox("Serial")  # Recuadro que agrupa los controles de conexión serial
 
-        com_layout = QFormLayout() #layout horizontal → "H"
+        com_layout = QFormLayout()
 
-
-        self.com_combo = QComboBox() #cuadro de opciones
+        self.com_combo = QComboBox()  # Lista desplegable con los puertos COM disponibles
 
         ports = (
-            self.connection_manager #habla con el connection manager
-            .serial_manager #se va directo al apartado de com serial
-            .get_available_ports() #obtiene los puertos
-        ) #obtiene los puertos obtenidos del archivo "serial_manager"
-
-        self.com_combo.addItems( #agrega los puertos al cuadro de opciones
-            ports
+            self.connection_manager  # Se accede al gestor de conexión
+            .serial_manager           # ...específicamente al submódulo encargado del puerto serial
+            .get_available_ports()    # ...y se obtiene la lista de puertos disponibles en el sistema
         )
 
+        self.com_combo.addItems(  # Se cargan los puertos encontrados en el combo box
+            ports
+        )
 
         self.refresh_button = QPushButton(
             "Actualizar"
         )
 
-        self.refresh_button.clicked.connect( #conecta el boton a la funcion de actializar los puertos
+        self.refresh_button.clicked.connect(  # Al presionar, se vuelve a escanear los puertos disponibles
             self.refresh_ports
         )
 
-
-        self.serial_button = QPushButton( #boton de conectar
+        self.serial_button = QPushButton(
             "Conectar"
         )
 
-        self.serial_button.clicked.connect( # se conecta el boton a la funcion de conexion
+        self.serial_button.clicked.connect(  # Al presionar, conecta o desconecta según el estado actual
             self.handle_connect
         )
-
-
-        #agregando los elementos al layout del grupo com
 
         com_layout.addRow(
             "Puerto COM",
@@ -213,22 +226,21 @@ class ConfigTab(QWidget):
         #                                                 Configuración general
         # ========================================================================================================================
 
-        config_group = QGroupBox( #borde
+        config_group = QGroupBox(
             "Configuración"
         )
 
-        form_layout = QFormLayout() #organiza automaticamente los elementos
+        form_layout = QFormLayout()  # Organiza automáticamente pares de etiqueta + campo
 
-        self.amperaje = QLineEdit() #cuadro texto
+        self.amperaje = QLineEdit()
 
         self.microstep = QComboBox()
 
         self.microstep.addItems(
-            ["128", "64", "32", "16", "8", "4", "2", "1"] #disponibles TMC2209: 128, 64, 32, 16, 8, 4, 2, FULLSTEP
+            ["128", "64", "32", "16", "8", "4", "2", "1"]  # Valores de microstepping soportados por el driver TMC2209
         )
 
-        #estableciendo "16" como microstep predeterminada
-        self.microstep.setCurrentIndex(3)
+        self.microstep.setCurrentIndex(3)  # "16" como valor predeterminado (índice 3 de la lista)
 
         self.velocidad_maxima = QLineEdit()
 
@@ -240,34 +252,33 @@ class ConfigTab(QWidget):
 
         self.offset_AS5600 = QLineEdit()
 
-        
-    #************************************** Valores predeterminados *************************************
+        # ************************************** Valores predeterminados *************************************
         self.amperaje.setText(
-            "800" #mA / max motor 17HD40005H-22B: 1.6 A
+            "800"  # mA (motor 17HD40005H-22B soporta hasta 1.6 A máx.)
         )
 
         self.velocidad_maxima.setText(
-            "32000" # N-mm / max: ±32000
+            "32000"  # steps/s (rango máximo permitido: ±32000)
         )
 
         self.aceleracion.setText(
-            "150000" #N-mm^2
+            "150000"  # steps/s^2
         )
 
         self.control_period_us.setText(
-            "1000" # us
+            "1000"  # microsegundos
         )
 
         self.telemetry_period_ms.setText(
-            "20" # ms
+            "20"  # milisegundos
         )
 
         self.offset_AS5600.setText(
-            "283" #°
+            "283"  # grados
         )
 
-    #************************************** Validadores de texto *************************************
-        self.amperaje.setValidator( #valida que sea un entero y rango de valores
+        # ************************************** Validadores de texto *************************************
+        self.amperaje.setValidator(  # Restringe la entrada a enteros dentro del rango permitido
             QIntValidator(
                 300,
                 1600
@@ -288,7 +299,7 @@ class ConfigTab(QWidget):
             )
         )
 
-        self.offset_AS5600.setValidator(
+        self.offset_AS5600.setValidator(  # Permite decimales, con hasta 3 cifras después del punto
             QDoubleValidator(
                 0.0,
                 360,
@@ -309,11 +320,9 @@ class ConfigTab(QWidget):
                 1000
             )
         )
+        # ****************************************************************************************************
 
-    #****************************************************************************************************
-
-        # agregando los elementos al layout del grupo
-
+        # Se agregan los campos (etiqueta + control) al formulario del grupo de configuración
         form_layout.addRow(
             "Amperaje (mA)",
             self.amperaje
@@ -332,7 +341,7 @@ class ConfigTab(QWidget):
         form_layout.addRow(
             "Aceleración",
             self.aceleracion
-        ) 
+        )
 
         form_layout.addRow(
             "Período de control (µs)",
@@ -341,7 +350,7 @@ class ConfigTab(QWidget):
 
         form_layout.addRow(
             "Período de Telemetría (ms)",
-            self.control_period_us
+            self.telemetry_period_ms  
         )
 
         form_layout.addRow(
@@ -365,57 +374,45 @@ class ConfigTab(QWidget):
             form_layout
         )
 
-
-        #************************************** juntando cuadros de conexion *******************************
+        # ************************************** Juntando cuadros de conexión (Serial + TCP/IP) *******************************
         layout_tipos_conexiones = QHBoxLayout()
 
         layout_tipos_conexiones.addWidget(
-                self.com_group,
-                1 #es para indicar que el widget ocupa 1 parte, sirve para el tamaño del cuadro
-        )          # es lo mismo a decir 50% (para este caso donde solo hay 2 cuadros)
+            self.com_group,
+            1  # Proporción de espacio que ocupa el widget dentro del layout (aquí, 50% junto al otro grupo)
+        )
 
         layout_tipos_conexiones.addWidget(
-               self.TCP_group,
-               1
+            self.TCP_group,
+            1
         )
-        
+
         # ========================================================================================================
-        #                                          Widgets style
+        #                                          Estilo de los widgets
         # ========================================================================================================
 
-        # QlineEdits & QComboBox 
-       
+        # Altura uniforme para todos los QLineEdit y QComboBox de la pestaña
         set_control_height(
-
             self.amperaje,
-
             self.microstep,
-
             self.velocidad_maxima,
-
             self.aceleracion,
-
             self.control_period_us,
-
             self.telemetry_period_ms,
-
             self.offset_AS5600,
-
             self.com_combo,
-
             self.TCP_Equipo
         )
 
-        # QPushButton
+        # Estilo de botones
         set_primary_button(self.modify_button)
         set_secondary_button(
             self.TCP_boton,
             self.refresh_button,
             self.serial_button
-            
         )
-        
-        # espaciado y margen de ventana
+
+        # Espaciado y márgenes del layout principal y del sub-layout de conexiones
         configure_layout(
             main_layout
         )
@@ -427,9 +424,9 @@ class ConfigTab(QWidget):
         # ========================================================================================================
         #                                          Agregar al layout principal
         # ========================================================================================================
-        #nota: anteriormente se crearon los gruposy sus objetos al layout de cada grupo
-        #PERO en ningun momento se esta mostrando en la ventana principal, esto solo
-        #se  puede hacer mediante el layout del mainwindow > "main_layout"
+        # Nota: los grupos (conec_group, com_group, TCP_group, config_group) ya tienen su
+        # propio layout interno, pero eso no los hace visibles por sí solos; deben añadirse
+        # al layout principal de la pestaña para aparecer en la ventana.
 
         main_layout.addWidget(
             conec_group
@@ -443,17 +440,16 @@ class ConfigTab(QWidget):
             config_group
         )
 
-        main_layout.addStretch() #empuja todo hacia arriba
+        main_layout.addStretch()  # Empuja todo el contenido hacia arriba, dejando espacio vacío abajo
 
         self.setLayout(
             main_layout
-            
         )
 
-        #**************************** habilitar/deshabilitar grupos *******************************
-        self.serial_radio.setChecked(True) #valor predefinido
+        # **************************** Habilitar/deshabilitar grupos según el modo elegido *******************************
+        self.serial_radio.setChecked(True)  # Modo Serial seleccionado por defecto
 
-        #al marcar la seleccion del radio button llama a la funcion
+        # Al cambiar la selección de cualquiera de los radio buttons, se actualiza qué grupo está habilitado
         self.serial_radio.toggled.connect(
             self.actualizar_metodo_conexion
         )
@@ -462,13 +458,14 @@ class ConfigTab(QWidget):
             self.actualizar_metodo_conexion
         )
 
-        self.actualizar_metodo_conexion()
-        #********************************************************************************************************
+        self.actualizar_metodo_conexion()  # Se ejecuta una vez al iniciar para dejar la interfaz en el estado correcto
+        # ********************************************************************************************************
 
-
-    def actualizar_metodo_conexion(self): #selecciona el metodo de conexion para el microcontrolador
-        
-
+    def actualizar_metodo_conexion(self):
+        """
+        Habilita el grupo de controles correspondiente al método de conexión
+        seleccionado (Serial o TCP/IP) y deshabilita el otro.
+        """
         if self.serial_radio.isChecked():
 
             self.com_group.setEnabled(True)
@@ -481,48 +478,51 @@ class ConfigTab(QWidget):
 
             self.TCP_group.setEnabled(True)
 
+    def handle_connect(self):
+        """
+        Conecta o desconecta el sistema según el estado actual de la conexión.
 
-    def handle_connect(self): #realiza la conexion/desconexion del puerto designado
+        Si no hay conexión activa, arma el "target" (puerto serial o IP) según
+        el modo seleccionado y solicita al connection_manager que se conecte.
+        Si ya existe una conexión, la termina.
+        """
+        if not self.connection_manager.connected:  # Si actualmente no está conectado
 
-        if not self.connection_manager.connected: #si no se encuentra conectado a ningun puerto
-            
             if self.serial_radio.isChecked():
-            
-                self.connection_manager.set_mode( # manda a connection_manager la opcion serial
+
+                self.connection_manager.set_mode(  # Indica al gestor que use modo Serial
                     self.connection_manager.SERIAL
                 )
 
                 target = (
-                    self.com_combo.currentText() #obtiene el puerto elegido del cudro de opciones
+                    self.com_combo.currentText()  # Puerto COM seleccionado en el combo box
                 )
 
             else:
-                
-                self.connection_manager.set_mode( #modo
+
+                self.connection_manager.set_mode(  # Indica al gestor que use modo Red
                     self.connection_manager.NETWORK
                 )
 
                 equipo = (
-                    self.TCP_Equipo.text() #No. dispositivo a conectar
+                    self.TCP_Equipo.text()  # Número de equipo ingresado por el usuario
                 )
 
                 target = (
-                    f"192.168.12.{equipo}" # direccion IP completa del equipo
+                    f"192.168.12.{equipo}"  # Se arma la dirección IP completa
                 )
 
-
-            self.connection_manager.connect( #manda a conectar el equipo> connection manager determina el metodo y manda a llamar segun el caso
+            self.connection_manager.connect(  # El connection_manager decide el método según el modo y realiza la conexión
                 target
             )
 
         else:
 
-            self.connection_manager.disconnect()
- 
+            self.connection_manager.disconnect()  # Si ya está conectado, se desconecta
 
-    def refresh_ports(self):    #actualiza los puertos encontrados
-
-        self.com_combo.clear()
+    def refresh_ports(self):
+        """Vuelve a escanear y actualizar la lista de puertos COM disponibles."""
+        self.com_combo.clear()  # Limpia la lista actual antes de recargarla
 
         ports = (
             self.connection_manager
@@ -533,14 +533,19 @@ class ConfigTab(QWidget):
             ports
         )
 
+    def update_connection_status(self, connected):
+        """
+        Actualiza los indicadores visuales (etiqueta de estado, texto de
+        botones y habilitación de controles) según el estado de conexión.
 
-    def update_connection_status(self,connected):   #cambia el estado de indicadores visuales relacionados a la conexion
-
+        Args:
+            connected (bool): True si el sistema está conectado, False si no.
+        """
         if connected:
 
-            set_status(self.connection_status,"● Conectado", STATUS_GREEN)
+            set_status(self.connection_status, "● Conectado", STATUS_GREEN)
 
-            self.serial_button.setText( #cambia el texto del boton (conectar/desconectar)
+            self.serial_button.setText(  # El botón cambia de "Conectar" a "Desconectar"
                 "Desconectar"
             )
 
@@ -548,12 +553,12 @@ class ConfigTab(QWidget):
                 "Desconectar"
             )
 
-            self.com_combo.setEnabled(False) #deshabilita el menu de puertos (previene cambiar de puerto mientras se usa el micro)
+            self.com_combo.setEnabled(False)  # Se bloquea el cambio de puerto mientras hay una conexión activa
             self.TCP_Equipo.setEnabled(False)
 
         else:
 
-            set_status(self.connection_status,"● Desconectado", STATUS_RED)
+            set_status(self.connection_status, "● Desconectado", STATUS_RED)
 
             self.serial_button.setText(
                 "Conectar"
@@ -566,15 +571,21 @@ class ConfigTab(QWidget):
             self.com_combo.setEnabled(True)
             self.TCP_Equipo.setEnabled(True)
 
-
     def show_connection_error(self, message):
-        QMessageBox.critical(self,"Error de conexión", message)
+        """Muestra un cuadro de diálogo con el mensaje de error de conexión recibido."""
+        QMessageBox.critical(self, "Error de conexión", message)
 
+    def save_config(self):
+        """
+        Valida y guarda los parámetros de configuración ingresados por el
+        usuario, y los envía al microcontrolador a través del connection_manager.
 
-    def save_config(self): #hace el envio de configuraciones de actuadores al esp32
-        
-        #Amperaje
-        if not self.amperaje.hasAcceptableInput(): #valida que el dato se encuentre en los parametros definidos> sino envia alerta
+        Si algún campo no cumple con su rango permitido, se muestra una
+        advertencia y se detiene el proceso sin enviar datos.
+        """
+
+        # Amperaje
+        if not self.amperaje.hasAcceptableInput():  # Verifica que el valor esté dentro del rango definido por el validador
             QMessageBox.warning(
                 self,
                 "Amperaje Invalido",
@@ -585,58 +596,56 @@ class ConfigTab(QWidget):
             self.amperaje.text()
         )
 
-        #Microstep
+        # Microstep
         self.config.microstep = int(
             self.microstep.currentText()
         )
 
-        #Vel. Max
+        # Velocidad máxima
         if not self.velocidad_maxima.hasAcceptableInput():
-            QMessageBox.warning(self,"Velocidad Máxima Invalida","Valores permitidos: 300 - 100000 steps/s")
+            QMessageBox.warning(self, "Velocidad Máxima Invalida", "Valores permitidos: 300 - 100000 steps/s")
             return
         self.config.velocidad_maxima = int(
             self.velocidad_maxima.text()
         )
 
-        #Aceleracion
+        # Aceleración
         if not self.aceleracion.hasAcceptableInput():
-            QMessageBox.warning(self, "Aceleracion Invalida","Valores permitidos: 300 - 150000 steps/s^2")
+            QMessageBox.warning(self, "Aceleracion Invalida", "Valores permitidos: 300 - 150000 steps/s^2")
             return
         self.config.aceleracion = int(
             self.aceleracion.text()
         )
 
-        #t_muestreo
+        # Período de control
         if not self.control_period_us.hasAcceptableInput():
-            QMessageBox.warning(self,"Período de Control Inválido", "Ingrese un período de control válido.")           
+            QMessageBox.warning(self, "Período de Control Inválido", "Ingrese un período de control válido.")
             return
-        self.config.control_period_us= int(
+        self.config.control_period_us = int(
             self.control_period_us.text()
         )
 
+        # Período de telemetría
         if not self.telemetry_period_ms.hasAcceptableInput():
-            QMessageBox.warning(self,"Período de Telemetría Inválido", "Ingrese un período de telemetría válido.")           
+            QMessageBox.warning(self, "Período de Telemetría Inválido", "Ingrese un período de telemetría válido.")
             return
         self.config.telemetry_period_ms = int(
             self.telemetry_period_ms.text()
         )
 
-        #offset angular AS5600
+        # Offset angular del sensor AS5600
         if not self.offset_AS5600.hasAcceptableInput():
-            QMessageBox.warning(self,"Offset Del Sensor Invalido","Valores permitidos: 0.0 - 360.00 grados")
+            QMessageBox.warning(self, "Offset Del Sensor Invalido", "Valores permitidos: 0.0 - 360.00 grados")
             return
         self.config.offset_AS5600 = float(
             self.offset_AS5600.text()
         )
 
-
-        #envio de datos
-
+        # Envío del modelo de configuración completo al microcontrolador
         self.connection_manager.send_model(
             self.config
         )
 
         print(
-        self.config.to_json()
-)
-        
+            self.config.to_json()  # Depuración: muestra en consola el JSON enviado
+        )
