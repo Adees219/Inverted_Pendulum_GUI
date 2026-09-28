@@ -234,5 +234,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-> 💡 Si decides formalizar esto, puedes agregar un archivo `LICENSE` en la raíz del repositorio con el texto anterior; GitHub lo detecta automáticamente y lo muestra en la página principal del repositorio.
